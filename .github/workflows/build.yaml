@@ -1,0 +1,40 @@
+name: Build FVS Docker Images
+
+on: 
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:  
+        fvs_version: [FS2024.4, 2025.1, FS2025.2, FS2025.3]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+
+      - name: Build and push to Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/fvs:${{ matrix.fvs_version }}
+          build-args: FVS_VERSION=${{ matrix.fvs_version }}
+      
+      - name: Run tests
+        run: >
+          docker run -v ./${{github.event.repository.name}}:/${{github.event.repository.name}} 
+          fvs:${{ matrix.fvs_version }} pytest /${{github.event.repository.name}}
