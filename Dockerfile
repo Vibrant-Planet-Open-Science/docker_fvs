@@ -15,7 +15,6 @@ RUN cd /build/ForestVegetationSimulator/bin &&\
 
 
 FROM python:3.11-slim AS runtime
-ENV PIP_PREFER_BINARY=1
 RUN apt-get update &&\
  apt-get install -y git build-essential gfortran cmake unixodbc-dev &&\
  pip install --upgrade pip pip-tools &&\
