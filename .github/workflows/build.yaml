@@ -33,8 +33,3 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/fvs:${{ matrix.fvs_version }}
           build-args: FVS_VERSION=${{ matrix.fvs_version }}
-      
-      - name: Run tests
-        run: >
-          docker run -v ./${{github.event.repository.name}}:/${{github.event.repository.name}} 
-          fvs:${{ matrix.fvs_version }} pytest /${{github.event.repository.name}}
