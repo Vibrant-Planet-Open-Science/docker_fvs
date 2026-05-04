@@ -19,7 +19,7 @@ This repository builds FVS from source into a **single runtime image per upstrea
 ## Functionality
 This repository establishes a few automations as GitHub Actions to:
 - Detect new releases of FVS from the upstream repository automatically
-- Build all 24 regional variants for each detected release
+- Build all 22 of the US regional variants for each detected release (the Canadian variants currently have broken build recipes)
 - Produce a single versioned runtime image per release containing all variants
 - Support invocation by variant name and accept a keyfile as the primary input
 - Support pass-through of FVS command-line options (`--keywordfile`, `--stoppoint`, `--restart`)
