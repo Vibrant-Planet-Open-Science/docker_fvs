@@ -1,0 +1,62 @@
+# Dockerfile.variant
+#
+# Compiles a single FVS regional variant from the upstream source release.
+# The final stage is a scratch image containing only the compiled binary
+# and shared object — no compiler toolchain, no source code.
+#
+# Build args:
+#   FVS_VERSION  Git tag or branch to clone from upstream (e.g. FS2025.4c)
+#   VARIANT      FVS variant name (e.g. FVSak, FVSpn)
+#
+# Usage:
+#   docker build \
+#     --build-arg FVS_VERSION=FS2025.4c \
+#     --build-arg VARIANT=FVSpn \
+#     --target artifact \
+#     -f docker/Dockerfile.variant .
+
+FROM ubuntu:latest AS builder
+
+USER root
+
+ARG FVS_VERSION
+ARG VARIANT
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV FC=gfortran
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    gfortran \
+    git \
+    make \
+    unixodbc-dev
+
+WORKDIR /build
+RUN git clone \
+    --branch "${FVS_VERSION}" \
+    --recurse-submodules \
+    https://github.com/USDAForestService/ForestVegetationSimulator.git
+
+# Build the shared library and executable for the specified variant.
+# The makefile produces:
+#   ${VARIANT}.so  — shared library for API use
+#   ${VARIANT}     — standalone executable
+RUN cd /build/ForestVegetationSimulator/bin && make "${VARIANT}"
+
+# Collect artifacts into a clean directory for extraction
+RUN mkdir -p /artifacts && \
+    cp "/build/ForestVegetationSimulator/bin/${VARIANT}.so" /artifacts/ && \
+    cp "/build/ForestVegetationSimulator/bin/${VARIANT}" /artifacts/ && \
+    chmod +x "/artifacts/${VARIANT}"
+
+# -----------------------------------------------------------------------------
+# Artifact stage: scratch image containing only the compiled outputs.
+# Used by the CI workflow to extract binaries via `docker cp`.
+# Not intended to be run directly.
+# -----------------------------------------------------------------------------
+FROM scratch AS artifact
+
+COPY --from=builder /artifacts/ /artifacts/
