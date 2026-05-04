@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       fvs_version:
-        description: 'FVS release tag to build (e.g. FS2025.4c)'
+        description: "FVS release tag to build (e.g. FS2025.4c)"
         required: true
         type: string
 
@@ -23,7 +23,7 @@ jobs:
     name: Build ${{ matrix.variant }}
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false   # Allow other variants to complete if one fails
+      fail-fast: false # Allow other variants to complete if one fails
       matrix:
         variant:
           - FVSak
@@ -61,7 +61,7 @@ jobs:
             --build-arg FVS_VERSION=${{ inputs.fvs_version }} \
             --build-arg VARIANT=${{ matrix.variant }} \
             --target artifact \
-            -t fvs-artifact-${{ matrix.variant }}:local \
+            -t fvs-artifact-$(echo '${{ matrix.variant }}' | tr '[:upper:]' '[:lower:]'):local \
             -f docker/Dockerfile.variant .
 
       - name: Extract compiled binaries from image
@@ -69,7 +69,7 @@ jobs:
           mkdir -p staging/${{ matrix.variant }}
           # Copy artifacts out of the image filesystem into the runner workspace
           docker create --name extract-${{ matrix.variant }} \
-            fvs-artifact-${{ matrix.variant }}:local
+            fvs-artifact-$(echo '${{ matrix.variant }}' | tr '[:upper:]' '[:lower:]'):local
           docker cp \
             extract-${{ matrix.variant }}:/artifacts/. \
             staging/${{ matrix.variant }}/
@@ -82,7 +82,7 @@ jobs:
         with:
           name: ${{ matrix.variant }}
           path: staging/${{ matrix.variant }}/
-          retention-days: 1   # Ephemeral — only needed for the assembly job
+          retention-days: 1 # Ephemeral — only needed for the assembly job
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
@@ -96,8 +96,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-variant
     permissions:
-      contents: write       # To commit releases.json
-      packages: write       # To push to GHCR and delete evicted package versions
+      contents: write # To commit releases.json
+      packages: write # To push to GHCR and delete evicted package versions
 
     steps:
       - name: Checkout repository
@@ -109,7 +109,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: staging/
-          merge-multiple: false   # Preserve per-variant subdirectories
+          merge-multiple: false # Preserve per-variant subdirectories
 
       - name: Stage artifacts for Docker build
         run: |
