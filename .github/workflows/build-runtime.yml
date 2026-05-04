@@ -89,6 +89,11 @@ jobs:
       packages: write # To push to GHCR and delete evicted package versions
 
     steps:
+      - name: Normalize image name to lowercase
+        run: |
+          echo "IMAGE_NAME=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" \
+            >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
