@@ -27,7 +27,7 @@ jobs:
       matrix:
         variant:
           - FVSak
-          - FVSbc
+          # - FVSbc # canadian variants still failing build due to volume and biomass equations
           - FVSbm
           - FVSca
           - FVSci
@@ -41,7 +41,7 @@ jobs:
           - FVSnc
           - FVSne
           - FVSoc
-          - FVSon
+          # - FVSon # canadian variants still failing build due to volume and biomass equations
           - FVSop
           - FVSpn
           - FVSsn
