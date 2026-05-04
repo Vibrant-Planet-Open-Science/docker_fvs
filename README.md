@@ -73,7 +73,7 @@ Reads `releases.json` for the most recently built version, queries the GitHub AP
 
 ### Stage 2 — Matrix variant build (`build-runtime.yml`)
 
-Each of 24 jobs compiles one variant; binaries are uploaded as **GitHub Actions artifacts** (short retention). Nothing is pushed to a registry in this stage.
+Each of the jobs compiles one variant; binaries are uploaded as **GitHub Actions artifacts** (short retention). Nothing is pushed to a registry in this stage.
 
 ### Stage 3 — Runtime assembly (`build-runtime.yml`)
 
@@ -106,7 +106,7 @@ docker run --rm \
 # Stop point
 docker run --rm \
   -v /path/to/workdir:/data \
-  ghcr.io/YOUR_ORG/fvs-runtime:latest \
+  ghcr.io/vibrant-planet-open-science/fvs-runtime:latest \
   FVSak myrun.key --stoppoint=1,2040,myrun.stop
 ```
 
@@ -114,7 +114,7 @@ docker run --rm \
 # Restart
 docker run --rm \
   -v /path/to/workdir:/data \
-  ghcr.io/YOUR_ORG/fvs-runtime:latest \
+  ghcr.io/vibrant-planet-open-science/fvs-runtime:latest \
   FVSak --restart=myrun.stop
 ```
 
