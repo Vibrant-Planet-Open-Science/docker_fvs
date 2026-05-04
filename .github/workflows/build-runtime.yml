@@ -55,27 +55,16 @@ jobs:
       - name: Checkout this repository
         uses: actions/checkout@v4
 
-      - name: Build variant image (compile only)
+      - name: Build variant and extract binaries
         run: |
           docker build \
             --build-arg FVS_VERSION=${{ inputs.fvs_version }} \
             --build-arg VARIANT=${{ matrix.variant }} \
             --target artifact \
-            -t fvs-artifact-$(echo '${{ matrix.variant }}' | tr '[:upper:]' '[:lower:]'):local \
+            --output type=local,dest=staging/${{ matrix.variant }} \
             -f docker/Dockerfile.variant .
-
-      - name: Extract compiled binaries from image
-        run: |
-          mkdir -p staging/${{ matrix.variant }}
-          # Copy artifacts out of the image filesystem into the runner workspace
-          docker create --name extract-${{ matrix.variant }} \
-            fvs-artifact-$(echo '${{ matrix.variant }}' | tr '[:upper:]' '[:lower:]'):local
-          docker cp \
-            extract-${{ matrix.variant }}:/artifacts/. \
-            staging/${{ matrix.variant }}/
-          docker rm extract-${{ matrix.variant }}
           echo "Extracted artifacts:"
-          ls -lh staging/${{ matrix.variant }}/
+          ls -lh staging/${{ matrix.variant }}/artifacts/
 
       - name: Upload variant artifacts
         uses: actions/upload-artifact@v4
