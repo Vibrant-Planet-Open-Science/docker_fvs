@@ -1,0 +1,223 @@
+name: Build FVS Runtime Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      fvs_version:
+        description: 'FVS release tag to build (e.g. FS2025.4c)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/fvs-runtime
+  KEEP_RELEASES: 4
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Stage 2: Parallel per-variant compilation
+  # Each job compiles a single FVS variant and uploads the binaries as an
+  # ephemeral Actions artifact. Nothing is pushed to any image registry.
+  # ---------------------------------------------------------------------------
+  build-variant:
+    name: Build ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false   # Allow other variants to complete if one fails
+      matrix:
+        variant:
+          - FVSak
+          - FVSbc
+          - FVSbm
+          - FVSca
+          - FVSci
+          - FVScr
+          - FVScs
+          - FVSec
+          - FVSem
+          - FVSie
+          - FVSkt
+          - FVSls
+          - FVSnc
+          - FVSne
+          - FVSoc
+          - FVSon
+          - FVSop
+          - FVSpn
+          - FVSsn
+          - FVSso
+          - FVStt
+          - FVSut
+          - FVSwc
+          - FVSws
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Build variant image (compile only)
+        run: |
+          docker build \
+            --build-arg FVS_VERSION=${{ inputs.fvs_version }} \
+            --build-arg VARIANT=${{ matrix.variant }} \
+            --target artifact \
+            -t fvs-artifact-${{ matrix.variant }}:local \
+            -f docker/Dockerfile.variant .
+
+      - name: Extract compiled binaries from image
+        run: |
+          mkdir -p staging/${{ matrix.variant }}
+          # Copy artifacts out of the image filesystem into the runner workspace
+          docker create --name extract-${{ matrix.variant }} \
+            fvs-artifact-${{ matrix.variant }}:local
+          docker cp \
+            extract-${{ matrix.variant }}:/artifacts/. \
+            staging/${{ matrix.variant }}/
+          docker rm extract-${{ matrix.variant }}
+          echo "Extracted artifacts:"
+          ls -lh staging/${{ matrix.variant }}/
+
+      - name: Upload variant artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.variant }}
+          path: staging/${{ matrix.variant }}/
+          retention-days: 1   # Ephemeral — only needed for the assembly job
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 + 4 + 5: Assembly, test, push, and release management
+  # Runs after all matrix jobs complete. Downloads all variant artifacts,
+  # builds the runtime image locally, runs tests on the runner, and only
+  # pushes to GHCR on success.
+  # ---------------------------------------------------------------------------
+  assemble-and-publish:
+    name: Assemble, Test, and Publish Runtime Image
+    runs-on: ubuntu-latest
+    needs: build-variant
+    permissions:
+      contents: write       # To commit releases.json
+      packages: write       # To push to GHCR and delete evicted package versions
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all variant artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: staging/
+          merge-multiple: false   # Preserve per-variant subdirectories
+
+      - name: Stage artifacts for Docker build
+        run: |
+          BIN_DEST="build-context/usr/local/bin"
+          LIB_DEST="build-context/usr/local/lib"
+          mkdir -p "$BIN_DEST" "$LIB_DEST"
+
+          find staging/ -type f -name '*.so' -exec cp {} "$LIB_DEST"/ \;
+          find staging/ -type f ! -name '*.so' -exec cp {} "$BIN_DEST"/ \;
+          chmod +x "$BIN_DEST"/FVS* 2>/dev/null || true
+
+          echo "Staged artifacts:"
+          ls -lh "$BIN_DEST/"
+          ls -lh "$LIB_DEST/"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Stage 3: Build runtime image locally (not pushed yet)
+      - name: Build runtime image
+        run: |
+          VERSION="${{ inputs.fvs_version }}"
+          docker build \
+            --build-arg FVS_VERSION="${VERSION}" \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION} \
+            -f docker/Dockerfile.runtime .
+
+      # Stage 4: Run existing pytest suite on the runner (binaries extracted from image)
+      - name: Set up Python for tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Install FVS binaries onto runner from built image
+        run: |
+          VERSION="${{ inputs.fvs_version }}"
+          IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          CID=$(docker create "$IMG")
+          docker cp "$CID:/usr/local/bin/." /tmp/fvs-bin/
+          docker cp "$CID:/usr/local/lib/." /tmp/fvs-lib/
+          docker rm "$CID"
+          sudo mkdir -p /usr/local/bin /usr/local/lib
+          sudo cp /tmp/fvs-bin/FVS* /usr/local/bin/
+          sudo cp /tmp/fvs-lib/FVS*.so /usr/local/lib/ 2>/dev/null || true
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            libgfortran5 libquadmath0
+          sudo ldconfig
+
+      - name: Run FVS build tests
+        run: pytest tests/ -v
+
+      # Stage 5a: Push to registry (only reached if tests pass)
+      - name: Tag and push runtime image
+        run: |
+          VERSION="${{ inputs.fvs_version }}"
+          FULL_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          LATEST_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+          docker push "$FULL_TAG"
+          docker tag "$FULL_TAG" "$LATEST_TAG"
+          docker push "$LATEST_TAG"
+
+          echo "Pushed ${FULL_TAG}"
+          echo "Pushed ${LATEST_TAG}"
+
+      # Stage 5b: Update releases.json and identify evicted version
+      - name: Update releases.json
+        id: releases
+        run: |
+          VERSION="${{ inputs.fvs_version }}"
+          KEEP=${{ env.KEEP_RELEASES }}
+
+          # Compute the version that will be evicted (if any) before modifying the file
+          EVICTED=$(jq -r --argjson k "$KEEP" '.[$k - 1] // empty' releases.json 2>/dev/null || true)
+
+          # Prepend new version and trim to KEEP entries (idempotent if already present)
+          jq --arg v "$VERSION" --argjson k "$KEEP" \
+            'if .[0] == $v then . else [$v] + (map(select(. != $v))) | .[:$k] end' \
+            releases.json > releases.tmp
+          mv releases.tmp releases.json
+
+          echo "Updated releases.json:"
+          cat releases.json
+
+          echo "evicted=${EVICTED}" >> "$GITHUB_OUTPUT"
+
+      # Stage 5c: Delete registry image for evicted version
+      - name: Evict old release from registry
+        if: steps.releases.outputs.evicted != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/evict.sh "${{ steps.releases.outputs.evicted }}"
+
+      # Stage 5d: Commit updated releases.json
+      - name: Commit releases.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases.json
+          git diff --cached --quiet || \
+            git commit -m "release: add ${{ inputs.fvs_version }} to releases.json [skip ci]"
+          git push
