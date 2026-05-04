@@ -1,10 +1,10 @@
 # Containerizing the Forest Vegetation Simulator
-The [**Forest Vegetation Simulator (FVS)**](https://github.com/USDAForestService/ForestVegetationSimulator) is a forest growth and yield model maintained by the USDA Forest Service. To allow FVS to be utilized in a reproducible, automated, or cloud-native context requires:
+The [**Forest Vegetation Simulator (FVS)**](https://github.com/USDAForestService/ForestVegetationSimulator) is a forest growth and yield model maintained by the USDA Forest Service. To allow FVS to be utilized in a reproducible, automated, or cloud-native context we have created this repository to provide:
 
 - A repeatable, automated build process that tracks upstream releases
 - Executable runtime environments that can be invoked programmatically
 - Version traceability so simulation outputs can be tied to the exact FVS version used
-- Minimal operational overhead as new FVS releases are published quarterly
+- Minimal operational overhead as new FVS releases are published ~quarterly
 
 This repository builds FVS from source into a **single runtime image per upstream release**, with all regional variants included. Images are published to **GitHub Container Registry (GHCR)**.
 
