@@ -1,0 +1,77 @@
+# Dockerfile.runtime
+#
+# Builds the FVS runtime image from pre-compiled variant binaries staged
+# by the CI assembly job.
+#
+# FVS version tags follow the pattern FS<YEAR>.<QUARTER><PATCH>,
+# e.g. FS2025.4c (year=2025, quarterly release=4, patch revision=c).
+#
+# The image contains:
+#   - All 24 compiled FVS variant executables installed to /usr/local/bin
+#   - All 24 compiled FVS variant shared objects installed to /usr/local/lib
+#   - Gfortran runtime libraries required to load the shared objects
+#   - A custom entrypoint (fvs-run) that selects the correct variant binary
+#
+# Build args:
+#   FVS_VERSION  The FVS release tag (e.g. FS2025.4c); baked into the image
+#                as an informational label. Not used for path resolution.
+#
+# Usage (from CI assembly job, after artifacts have been staged):
+#   docker build \
+#     --build-arg FVS_VERSION=FS2025.4c \
+#     -f docker/Dockerfile.runtime .
+#
+# Runtime usage:
+#   docker run --rm \
+#     -v /path/to/workdir:/data \
+#     ghcr.io/YOUR_ORG/fvs-runtime:FS2025.4c \
+#     FVSak myrun.key [--stoppoint=1,2040,myrun.stop]
+#
+# As a builder stage in downstream workflows:
+#   COPY --from=ghcr.io/YOUR_ORG/fvs-runtime:FS2025.4c \
+#        /usr/local/bin/FVSak /usr/local/bin/
+#   COPY --from=ghcr.io/YOUR_ORG/fvs-runtime:FS2025.4c \
+#        /usr/local/lib/FVSak.so /usr/local/lib/
+
+FROM ubuntu:22.04
+
+ARG FVS_VERSION
+RUN test -n "$FVS_VERSION" || (echo "ERROR: FVS_VERSION build arg is required" && exit 1)
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only the Fortran and quadmath runtime libraries.
+# These are required to dlopen the .so files and execute the binaries.
+# The compiler toolchain itself is not included.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgfortran5 \
+    libquadmath0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy all pre-compiled variant executables to /usr/local/bin.
+# Downstream workflows can COPY --from this image using the same paths.
+COPY build-context/usr/local/bin/ /usr/local/bin/
+
+# Copy all pre-compiled variant shared objects to /usr/local/lib.
+COPY build-context/usr/local/lib/ /usr/local/lib/
+
+# Ensure executables are marked executable and refresh the shared library cache.
+RUN chmod +x /usr/local/bin/FVS* 2>/dev/null || true && \
+    ldconfig
+
+# Install the entrypoint script.
+# Named fvs-run to avoid shadowing any FVS variant binary named 'fvs'.
+COPY docker/entrypoint.sh /usr/local/bin/fvs-run
+RUN chmod +x /usr/local/bin/fvs-run
+
+# FVS_VERSION is baked in as metadata and surfaced in entrypoint log lines.
+# It is not used for path resolution — binaries are on PATH via /usr/local/bin.
+ENV FVS_VERSION=${FVS_VERSION}
+
+# /data is the expected mount point for the caller's working directory.
+# It must contain the keyfile and any referenced database.
+# FVS output files will be written here by the simulator.
+VOLUME ["/data"]
+WORKDIR /data
+
+ENTRYPOINT ["fvs-run"]

@@ -1,0 +1,68 @@
+name: Poll Upstream FVS Releases
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Daily at 06:00 UTC
+  workflow_dispatch:        # Allow manual trigger
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write        # Required to dispatch build-runtime.yml
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Query upstream FVS for latest release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Try GitHub Releases API first; fall back to tags if no formal release exists
+          LATEST=$(gh api \
+            repos/USDAForestService/ForestVegetationSimulator/releases/latest \
+            --jq '.tag_name' 2>/dev/null || true)
+
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "No formal release found, falling back to latest tag..."
+            LATEST=$(gh api \
+              repos/USDAForestService/ForestVegetationSimulator/tags \
+              --jq '.[0].name')
+          fi
+
+          if [ -z "$LATEST" ]; then
+            echo "ERROR: Could not determine upstream FVS version" >&2
+            exit 1
+          fi
+
+          echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "Upstream latest: ${LATEST}"
+
+      - name: Read current releases.json
+        id: current
+        run: |
+          if [ -f releases.json ]; then
+            CURRENT=$(jq -r '.[0] // "none"' releases.json)
+          else
+            CURRENT="none"
+          fi
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "Current latest built: ${CURRENT}"
+
+      - name: Dispatch build if new release detected
+        if: steps.upstream.outputs.latest != steps.current.outputs.current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_VERSION="${{ steps.upstream.outputs.latest }}"
+          echo "New FVS release detected: ${NEW_VERSION}. Dispatching build..."
+          gh workflow run build-runtime.yml \
+            --field fvs_version="${NEW_VERSION}"
+
+      - name: No-op if already up to date
+        if: steps.upstream.outputs.latest == steps.current.outputs.current
+        run: |
+          echo "Already at latest version: ${{ steps.current.outputs.current }}. Nothing to do."
