@@ -1,3 +1,6 @@
+> [!NOTE]
+> This functionality provided by this repository is being superseded by work in the [fvs-build repo](https://github.com/Vibrant-Planet-Open-Science/fvs-build). The docker_fvs repository is no longer being used.
+
 # Containerizing the Forest Vegetation Simulator
 The [**Forest Vegetation Simulator (FVS)**](https://github.com/USDAForestService/ForestVegetationSimulator) is a forest growth and yield model maintained by the USDA Forest Service. To allow FVS to be utilized in a reproducible, automated, or cloud-native context we have created this repository to provide:
 
